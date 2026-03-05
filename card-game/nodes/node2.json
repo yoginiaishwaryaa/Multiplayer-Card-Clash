@@ -1,0 +1,16 @@
+{
+    "node_id": "node2",
+    "listen_host": "0.0.0.0",
+    "listen_port": 7002,
+    "ui_port": 8002,
+    "peers": {
+        "node1": "ws://localhost:7001/ws/node",
+        "node3": "ws://localhost:7003/ws/node"
+    },
+    "ring_order": [
+        "node1",
+        "node2",
+        "node3"
+    ],
+    "is_initial_token_holder": false
+}

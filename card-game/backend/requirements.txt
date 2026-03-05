@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+websockets
+pydantic
+pydantic-settings
+asyncio
+python-multipart

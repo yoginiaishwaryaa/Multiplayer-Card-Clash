@@ -1,0 +1,6 @@
+# Node modules
+card-game/frontend/node_modules/
+
+# Environment variables
+.env
+.venv
