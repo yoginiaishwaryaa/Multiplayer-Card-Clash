@@ -37,15 +37,26 @@ interface PlayingCardProps {
 }
 
 const PlayingCard: React.FC<PlayingCardProps> = ({ card, selected, onClick, size = 'md' }) => {
-    const red = isRed(card.suit);
-    const label = rankLabel(card.rank);
-    const suit = card.suit;
-
     const dims = {
         sm: { w: 52, h: 74, corner: '0.6rem', centerSuit: '1.5rem', cornerRank: '0.65rem', cornerSuit: '0.55rem' },
         md: { w: 64, h: 90, corner: '0.75rem', centerSuit: '2rem', cornerRank: '0.78rem', cornerSuit: '0.65rem' },
         lg: { w: 100, h: 140, corner: '1rem', centerSuit: '3rem', cornerRank: '1.1rem', cornerSuit: '0.9rem' },
     }[size];
+
+    if (!card) {
+        return (
+            <div
+                className="playing-card empty-slot"
+                style={{ width: dims.w, height: dims.h, borderRadius: dims.corner, border: '2px dashed #475569', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+                <div style={{ color: '#475569', fontSize: '0.7rem', fontWeight: 600 }}>EMPTY</div>
+            </div>
+        );
+    }
+
+    const red = isRed(card.suit);
+    const label = rankLabel(card.rank);
+    const suit = card.suit;
 
     return (
         <div
@@ -81,9 +92,16 @@ const DrawDeck: React.FC<{ deckSize: number; onDraw: () => void }> = ({ deckSize
             Draw Pile
         </div>
         {/* Stacked card illusion */}
-        <div style={{ position: 'relative', width: 64, height: 90 }} onClick={deckSize > 0 ? onDraw : undefined}
+        <div
+            style={{
+                position: 'relative',
+                width: 64,
+                height: 90,
+                cursor: deckSize > 0 ? 'pointer' : 'not-allowed'
+            }}
+            onClick={deckSize > 0 ? onDraw : undefined}
             title={deckSize > 0 ? `Draw a card (${deckSize} left)` : 'Deck empty'}
-            style2={{ cursor: deckSize > 0 ? 'pointer' : 'not-allowed' }}>
+        >
             {deckSize > 2 && <div className="deck-shadow deck-shadow-3" />}
             {deckSize > 1 && <div className="deck-shadow deck-shadow-2" />}
             <div className={`deck-card-facedown${deckSize === 0 ? ' empty' : ''}`}
@@ -243,7 +261,15 @@ const App: React.FC = () => {
                                 </span>
                             </div>
                             <div className="hand-container">
-                                {state.game.hand.length === 0 ? (
+                                {state.game.center_piles.every(p => p.length === 0) ? (
+                                    <div style={{ padding: '2rem', textAlign: 'center' }}>
+                                        <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>The game has not started yet.</p>
+                                        <button className="btn btn-primary btn-lg" onClick={() => sendAction('shuffle')}>
+                                            <RotateCcw size={20} style={{ marginRight: 10 }} />
+                                            Initialize Game System
+                                        </button>
+                                    </div>
+                                ) : state.game.hand.length === 0 ? (
                                     <span style={{ color: 'var(--success)', fontWeight: 600, fontSize: '0.9rem' }}>
                                         🎉 No cards left!
                                     </span>
@@ -278,7 +304,7 @@ const App: React.FC = () => {
                             <Camera size={16} style={{ marginRight: 8 }} /> Take Snapshot
                         </button>
                         <button className="btn btn-secondary" onClick={() => sendAction('shuffle')}>
-                            <RotateCcw size={16} style={{ marginRight: 8 }} /> Reset Piles (Token)
+                            <RotateCcw size={16} style={{ marginRight: 8 }} /> Reset/Start Game
                         </button>
                         <button className="btn btn-warning" onClick={() => sendAction('request_mutex')}>
                             <Key size={16} style={{ marginRight: 8 }} /> Request Mutex

@@ -1,7 +1,8 @@
 import asyncio
+import random
 from typing import List, Dict, Any, Optional
 from .models import Message, GameState
-import random
+from .utils import card_label
 
 SUITS = ['♠', '♥', '♣', '♦']
 RANKS = list(range(1, 14))  # 1=Ace, 2-10, 11=J, 12=Q, 13=K
@@ -25,7 +26,6 @@ class StateManager:
         self.winner: Optional[str] = None
 
         # Distributed Control state
-        self.has_token = False
         self.token_holder: Optional[str] = None
         
         # Mutex (Ricart-Agrawala) - used as the Move Token mechanism
@@ -58,6 +58,8 @@ class StateManager:
             "details": details
         }
         self.logs.append(log_entry)
+        # Sort logs by timestamp, then node_id if available in message or metadata
+        # For now, we append as they arrive, but ideally we'd re-sort if we had a full event log.
         if len(self.logs) > self.max_logs:
             self.logs.pop(0)
 
@@ -80,5 +82,5 @@ class StateManager:
             "mutex": {
                 "state": self.mutex_state
             },
-            "logs": self.logs[::-1]
+            "logs": self.logs[::-1] # Newest first for UI
         }
