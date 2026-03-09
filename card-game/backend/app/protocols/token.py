@@ -4,15 +4,16 @@ from typing import Optional
 from ..models import Message
 
 class TokenProtocol:
-    def __init__(self, node_id, state, network):
+    def __init__(self, node_id, state, network, broadcast_log_func):
         self.node_id = node_id
         self.state = state
         self.network = network
+        self.broadcast_log = broadcast_log_func
         self.pass_task: Optional[asyncio.Task] = None
 
     async def start(self):
         if self.state.has_token:
-            self.state.add_log("token", "Starting with token")
+            await self.broadcast_log("token", f"Node {self.node_id} starting with token")
             # Auto-pass after some time in demo mode
             self._start_pass_task()
 
@@ -23,20 +24,22 @@ class TokenProtocol:
         
         self.state.has_token = True
         self.state.token_sequence = msg.payload.get("sequence", 0)
+        # We don't broadcast_log here because the sender already broadcasted "Passing token to..."
+        # but we can add a local log for clarity
         self.state.add_log("token", f"Received token (seq: {self.state.token_sequence})")
         
         # In demo mode, we might auto-pass
         self._start_pass_task()
 
     def _start_pass_task(self):
-        if self.pass_task is not None and not self.pass_task.done():
+        if self.pass_task and not self.pass_task.done():
             self.pass_task.cancel()
         self.pass_task = asyncio.create_task(self._token_pass_loop())
 
     async def _token_pass_loop(self):
         try:
-            # Hold token for 3 seconds minimum for visibility
-            await asyncio.sleep(3)
+            # Hold token for 5 seconds minimum for visibility
+            await asyncio.sleep(5)
             await self.pass_token()
         except asyncio.CancelledError:
             pass
@@ -65,7 +68,10 @@ class TokenProtocol:
             ts=await self.state.get_next_ts(),
             payload={"sequence": self.state.token_sequence}
         )
-        self.state.add_log("token", f"Passing token to {next_node}")
+        
+        # Globally visible log
+        await self.broadcast_log("token", f"Token passed: {self.node_id} → {next_node} (seq: {self.state.token_sequence})")
+        
         await self.network.send_to_peer(next_node, msg)
         await self.network.notify_ui(self.state.to_ui_dict())
 
@@ -73,11 +79,12 @@ class TokenProtocol:
         if not self.state.has_token:
             self.state.add_log("token", "Permission denied: No token")
             return False
-        self.state.add_log("token", f"Performing special action: {action_name}")
+        
+        await self.broadcast_log("token", f"Used Token for: {action_name}")
         return True
 
     async def regenerate_token(self):
         self.state.has_token = True
         self.state.token_sequence += 1000 # Jump ahead to override any old tokens
-        self.state.add_log("token", "FORCED token regeneration")
+        await self.broadcast_log("token", f"FORCED token regeneration on {self.node_id}")
         asyncio.create_task(self._token_pass_loop())

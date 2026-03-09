@@ -19,33 +19,20 @@ class StateManager:
         self.clock_lock = asyncio.Lock()
         
         # Game State
-        full_deck = build_deck()
-        start_card1 = full_deck.pop()
-        start_card2 = full_deck.pop()
-        self.center_piles: List[List[Dict]] = [[start_card1], [start_card2]]
-
-        HAND_SIZE = 5
-        self.hand: List[Dict] = [full_deck.pop() for _ in range(HAND_SIZE)]
-        self.deck: List[Dict] = full_deck  # Face-down private draw pile
-
-        # Winner state — set to winning node_id when someone empties their hand
+        self.center_piles: List[List[Dict]] = [[], []]
+        self.hand: List[Dict] = []
+        self.deck: List[Dict] = []
         self.winner: Optional[str] = None
 
-        # Algorithm States
+        # Distributed Control state
         self.has_token = False
-        self.token_sequence = 0
+        self.token_holder: Optional[str] = None
         
-        # Mutex (Ricart-Agrawala)
+        # Mutex (Ricart-Agrawala) - used as the Move Token mechanism
         self.mutex_state = "RELEASED"
         self.mutex_request_ts = 0
         self.mutex_replies_received = set()
         self.deferred_replies = []
-        
-        # Snapshot (Chandy-Lamport)
-        self.is_recording = False
-        self.active_snapshots = {}
-        
-        # Synchronization
         self.mutex_event = asyncio.Event()
         
         # Logs for UI
@@ -63,6 +50,7 @@ class StateManager:
             return self.lamport_clock
 
     def add_log(self, category: str, message: str, details: Any = None):
+        """Internal log addition. Deterministic events should use this."""
         log_entry = {
             "timestamp": self.lamport_clock,
             "category": category,
@@ -72,6 +60,9 @@ class StateManager:
         self.logs.append(log_entry)
         if len(self.logs) > self.max_logs:
             self.logs.pop(0)
+
+    def player_has_card(self, card: Dict) -> bool:
+        return any(c["rank"] == card["rank"] and c["suit"] == card["suit"] for c in self.hand)
 
     def to_ui_dict(self):
         return {
@@ -83,16 +74,11 @@ class StateManager:
             },
             "winner": self.winner,
             "token": {
-                "has_token": self.has_token,
-                "sequence": self.token_sequence
+                "holder": self.token_holder,
+                "is_held_by_me": self.mutex_state == "HELD"
             },
             "mutex": {
-                "state": self.mutex_state,
-                "replies": list(self.mutex_replies_received),
-                "deferred": self.deferred_replies
-            },
-            "snapshot": {
-                "is_active": len(self.active_snapshots) > 0
+                "state": self.mutex_state
             },
             "logs": self.logs[::-1]
         }

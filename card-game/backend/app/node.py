@@ -18,39 +18,72 @@ class Node:
         self.state = StateManager(config.node_id)
         self.network = NetworkManager(config, self.handle_peer_message)
         
-        self.token_proto = TokenProtocol(config.node_id, self.state, self.network)
+        self.token_proto = TokenProtocol(config.node_id, self.state, self.network, self.broadcast_log)
         self.mutex_proto = MutexProtocol(config.node_id, self.state, self.network)
         self.snapshot_proto = SnapshotProtocol(config.node_id, self.state, self.network)
         
-        if config.is_initial_token_holder:
-            self.state.has_token = True
+        self.token_timeout_task: Optional[asyncio.Task] = None
 
     async def start(self):
         await self.network.connect_to_peers()
         await self.token_proto.start()
         
-        # If we are the initial token holder, initialize the center piles for everyone
+        # DESIGNATED LEADER: The person who is initial token holder handles Game Start
         if self.config.is_initial_token_holder:
-            # Wait a few seconds for other nodes to start and connect
-            await asyncio.sleep(2.0)
-            await self.ui_shuffle_deck()
+            await asyncio.sleep(3.0) # Wait for peers
+            await self.broadcast_game_start()
+
+    async def broadcast_game_start(self):
+        from .state import build_deck
+        deck = build_deck()
+        
+        # Each player gets 5 cards + their own remaining deck
+        # We broadcast the SHARED central cards and the fact the game started
+        center1 = deck.pop()
+        center2 = deck.pop()
+        
+        msg = Message(
+            type="GAME_ACTION",
+            src=self.config.node_id,
+            dst="all",
+            id=str(uuid.uuid4()),
+            ts=await self.state.get_next_ts(),
+            payload={
+                "action": "GAME_START",
+                "center_piles": [[center1], [center2]],
+                "initial_log": "Game Started! Initial center cards dealt."
+            }
+        )
+        await self.network.broadcast(msg)
+        await self.handle_game_action(msg) # Apply locally too
+
+    async def broadcast_log(self, category: str, message: str, details: Any = None):
+        log_msg = Message(
+            type="GAME_ACTION",
+            src=self.config.node_id,
+            dst="all",
+            id=str(uuid.uuid4()),
+            ts=await self.state.get_next_ts(),
+            payload={
+                "action": "LOG_EVENT",
+                "category": category,
+                "message": message,
+                "details": details
+            }
+        )
+        await self.network.broadcast(log_msg)
+        self.state.add_log(category, message, details)
+        await self.network.notify_ui(self.state.to_ui_dict())
 
     async def handle_peer_message(self, msg: Message):
         await self.state.update_ts(msg.ts)
         
-        if msg.type != "MARKER":
-            self.snapshot_proto.record_message(msg)
-
         if msg.type == "TOKEN":
             await self.token_proto.handle_token(msg)
         elif msg.type == "MUTEX_REQUEST":
             await self.mutex_proto.handle_request(msg)
         elif msg.type == "MUTEX_REPLY":
             await self.mutex_proto.handle_reply(msg)
-        elif msg.type == "MARKER":
-            await self.snapshot_proto.handle_marker(msg)
-        elif msg.type == "SNAPSHOT_STATE":
-            await self.snapshot_proto.handle_snapshot_state(msg)
         elif msg.type == "GAME_ACTION":
             await self.handle_game_action(msg)
         
@@ -58,110 +91,143 @@ class Node:
 
     async def handle_game_action(self, msg: Message):
         action = msg.payload.get("action")
-        if action == "PLAY_CARD":
+        if action == "GAME_START":
+            self.state.center_piles = msg.payload["center_piles"]
+            self.state.add_log("game", msg.payload["initial_log"])
+            
+            # Initial local hand/deck generation (private)
+            from .state import build_deck
+            full_deck = build_deck()
+            # deterministic seed if we want same decks, but user said "decks are different"
+            # so we just pop our own.
+            self.state.hand = [full_deck.pop() for _ in range(5)]
+            self.state.deck = full_deck
+            
+        elif action == "TOKEN_ACQUIRED":
+            holder = msg.src
+            self.state.token_holder = holder
+            self.state.add_log("token", f"Token acquired by {holder}")
+            
+        elif action == "PLAY_CARD":
             pile_idx = msg.payload["pile_idx"]
             card = msg.payload["card"]
             self.state.center_piles[pile_idx].append(card)
-            self.state.add_log("game", f"Player {msg.src} played {card_label(card)} to pile {pile_idx + 1}")
-        elif action == "RESET_PILES":
-            new_piles = msg.payload.get("center_piles")
-            if new_piles:
-                self.state.center_piles = new_piles
-            else:
-                # Fallback if for some reason cards weren't sent
-                from .state import build_deck
-                tmp = build_deck()
-                self.state.center_piles = [[tmp.pop()], [tmp.pop()]]
             
-            self.state.winner = None  # Reset winner on pile reset
-            self.state.add_log("game", f"Center piles reset by {msg.src}")
-        elif action == "PLAYER_DREW":
-            self.state.add_log("game", f"Player {msg.src} drew a card")
+            # If it was ME, remove from my actual hand
+            if msg.src == self.config.node_id:
+                matching = [c for c in self.state.hand if c["rank"] == card["rank"] and c["suit"] == card["suit"]]
+                if matching:
+                    self.state.hand.remove(matching[0])
+            
+            self.state.add_log("game", f"{msg.src} played {card_label(card)} → pile {pile_idx + 1}")
+            self.state.token_holder = None
+            
+        elif action == "TOKEN_REVOKED":
+            self.state.add_log("token", f"Token revoked from {msg.src} (Timeout)")
+            self.state.token_holder = None
+            
         elif action == "PLAYER_WON":
-            winner_id = msg.payload["winner"]
-            self.state.winner = winner_id
-            self.state.add_log("game", f"🏆 {winner_id} has WON the game by emptying their hand!")
+            self.state.winner = msg.payload["winner"]
+            self.state.add_log("game", f"🏆 {msg.payload['winner']} WON THE GAME!")
+
+        elif action == "LOG_EVENT":
+            self.state.add_log(msg.payload["category"], msg.payload["message"])
 
     async def ui_play_card(self, pile_idx: int, card: dict):
-        """
-        Play a card from hand onto a center pile.
-        On success the card is removed from hand — NO auto-draw.
-        Win condition: if hand becomes empty after playing, broadcast PLAYER_WON.
-        """
-        if self.state.winner:
-            return False  # Game already over
-
-        # 0. Must be in hand
-        matching = [c for c in self.state.hand if c["rank"] == card["rank"] and c["suit"] == card["suit"]]
-        if not matching:
-            self.state.add_log("game", f"Card {card_label(card)} not in hand")
+        if self.state.winner or self.state.token_holder:
             return False
 
-        # 1. Validity check (rank ±1, A↔K wrap; suit ignored)
+        # 1. Must be in hand
+        if not self.state.player_has_card(card):
+            return False
+
+        # 2. Check if valid on top
         top_card = self.state.center_piles[pile_idx][-1]
         if not is_valid_play(top_card, card):
-            self.state.add_log("game", f"Invalid play: {card_label(card)} on {card_label(top_card)}")
             return False
 
-        # 2. Request distributed mutex
+        # 3. COMPETITION: Request move token (Mutex)
+        # The fastest player (earliest TS) will get it.
         self.state.mutex_event.clear()
         await self.mutex_proto.request_access()
+        
         try:
-            await asyncio.wait_for(self.state.mutex_event.wait(), timeout=5.0)
+            # Wait for acquisition (the Ring/Protocol handles the 'fastest' logic)
+            await asyncio.wait_for(self.state.mutex_event.wait(), timeout=3.0)
         except asyncio.TimeoutError:
-            self.state.add_log("mutex", "Failed to acquire mutex (timeout)")
-            if self.state.mutex_state == "WANTED":
-                self.state.mutex_state = "RELEASED"
-                # Clear state to allow future requests
-                self.state.mutex_replies_received.clear()
             return False
 
         if self.state.mutex_state != "HELD":
             return False
 
-        # 3. Re-check after acquiring mutex
-        top_card = self.state.center_piles[pile_idx][-1]
-        if not is_valid_play(top_card, card):
-            self.state.add_log("game", "Pile changed during mutex wait — play no longer valid")
-            await self.mutex_proto.release()
-            return False
-
-        # 4. Commit: remove card from hand, push onto center pile
-        self.state.hand.remove(matching[0])
-        self.state.center_piles[pile_idx].append(card)
-        self.state.add_log(
-            "game",
-            f"I played {card_label(card)} → pile {pile_idx + 1}. Hand: {len(self.state.hand)} cards"
-        )
-
-        # 5. Broadcast the play to peers
-        play_msg = Message(
+        # 4. TOKEN ACQUIRED - Broadcast Acquisition
+        acq_msg = Message(
             type="GAME_ACTION",
             src=self.config.node_id,
             dst="all",
             id=str(uuid.uuid4()),
             ts=await self.state.get_next_ts(),
-            payload={"action": "PLAY_CARD", "pile_idx": pile_idx, "card": card}
+            payload={"action": "TOKEN_ACQUIRED"}
         )
-        await self.network.broadcast(play_msg)
+        await self.network.broadcast(acq_msg)
+        await self.handle_game_action(acq_msg)
 
-        # 6. Win check — empty hand means this player wins
-        if len(self.state.hand) == 0:
-            self.state.winner = self.config.node_id
-            self.state.add_log("game", f"🏆 I WON! Hand is empty!")
-            win_msg = Message(
+        # 5. START 2s TIMEOUT
+        self.token_timeout_task = asyncio.create_task(self._token_timeout_handler())
+
+        # 6. COMMIT PLAY
+        # Re-check validity after acquisition
+        top_card = self.state.center_piles[pile_idx][-1]
+        if is_valid_play(top_card, card):
+            # Success! Cancel timeout
+            if self.token_timeout_task:
+                self.token_timeout_task.cancel()
+
+            play_msg = Message(
                 type="GAME_ACTION",
                 src=self.config.node_id,
                 dst="all",
                 id=str(uuid.uuid4()),
                 ts=await self.state.get_next_ts(),
-                payload={"action": "PLAYER_WON", "winner": self.config.node_id}
+                payload={"action": "PLAY_CARD", "pile_idx": pile_idx, "card": card}
             )
-            await self.network.broadcast(win_msg)
+            await self.network.broadcast(play_msg)
+            await self.handle_game_action(play_msg)
+            
+            # Win check
+            if len(self.state.hand) == 0:
+                win_msg = Message(
+                    type="GAME_ACTION",
+                    src=self.config.node_id,
+                    dst="all",
+                    id=str(uuid.uuid4()),
+                    ts=await self.state.get_next_ts(),
+                    payload={"action": "PLAYER_WON", "winner": self.config.node_id}
+                )
+                await self.network.broadcast(win_msg)
+                await self.handle_game_action(win_msg)
 
-        # 7. Release mutex
+        # 7. Always release token at end
         await self.mutex_proto.release()
         return True
+
+    async def _token_timeout_handler(self):
+        try:
+            await asyncio.sleep(2.0)
+            # If we are here, player took too long
+            rev_msg = Message(
+                type="GAME_ACTION",
+                src=self.config.node_id,
+                dst="all",
+                id=str(uuid.uuid4()),
+                ts=await self.state.get_next_ts(),
+                payload={"action": "TOKEN_REVOKED"}
+            )
+            await self.network.broadcast(rev_msg)
+            await self.handle_game_action(rev_msg)
+            await self.mutex_proto.release()
+        except asyncio.CancelledError:
+            pass
 
     async def ui_draw_card(self):
         """
