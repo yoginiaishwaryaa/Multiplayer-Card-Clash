@@ -5,17 +5,29 @@ import json
 import socket
 import argparse
 
-def get_lan_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def get_all_ips():
+    ips = []
     try:
-        # doesn't even have to be reachable
+        hostname = socket.gethostname()
+        _, _, ip_list = socket.gethostbyname_ex(hostname)
+        for ip in ip_list:
+            if not ip.startswith("127."):
+                ips.append(ip)
+    except:
+        pass
+    
+    # Fallback/Additional check using the connection trick
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('10.255.255.255', 1))
-        IP = s.getsockname()[0]
-    except Exception:
-        IP = '127.0.0.1'
-    finally:
+        conn_ip = s.getsockname()[0]
+        if conn_ip not in ips and conn_ip != '127.0.0.1':
+            ips.append(conn_ip)
         s.close()
-    return IP
+    except:
+        pass
+        
+    return ips if ips else ["127.0.0.1"]
 
 def get_config(node_id):
     config_path = f"nodes/{node_id}.json"
@@ -37,30 +49,45 @@ if __name__ == "__main__":
     parser.add_argument('--node', type=str, required=True, help='Which node to run? (node1, node2, node3)')
     args = parser.parse_args()
 
-    lan_ip = get_lan_ip()
-    print(f"Detected your LAN IP as: {lan_ip}")
+    all_ips = get_all_ips()
+    print(f"Detected network IPs: {', '.join(all_ips)}")
+    
+    # Use the first one as primary candidate for the printout
+    lan_ip = all_ips[0]
     
     # Read config
     config = get_config(args.node)
     
+    ui_port = config["ui_port"]
+    peer_port = config["listen_port"]
     frontend_port = 3000 + int(args.node[-1])
-    backend_port = config["ui_port"]
 
-    print(f"Starting Backend {args.node} on port {backend_port}...")
+    print(f"\n[BACKEND] Starting {args.node}...")
+    print(f" - UI Channel (WebSocket): Port {ui_port}")
+    print(f" - Peer Channel (TCP): Port {peer_port}")
     backend_p = run_node(args.node)
     
     import time
     time.sleep(1)
     
-    print(f"Starting Frontend on port {frontend_port}...")
-    frontend_p = run_frontend(frontend_port, backend_port)
+    print(f"[FRONTEND] Starting React UI on port {frontend_port}...")
+    frontend_p = run_frontend(frontend_port, ui_port)
 
-    print("\n===============================")
-    print(f"Node is running! Tell other devices to connect their peers to:")
-    print(f" {lan_ip}:{backend_port}")
-    print(f"\nAccess the UI on this device at: http://localhost:{frontend_port}")
-    print(f"Access the UI remotely at: http://{lan_ip}:{frontend_port}")
-    print("===============================\n")
+    print("\n" + "="*50)
+    print("ACTION REQUIRED FOR MULTI-DEVICE PLAY:")
+    print("="*50)
+    print("Your laptops must share a real LAN IP.")
+    for ip in all_ips:
+        status = "(Most Likely)" if not ip.startswith("192.168.56") else "(Virtual/Skip)"
+        print(f" - Candidate IP: {ip} {status}")
+    
+    print("-" * 50)
+    print(f"Tell other players to add this to their JSON 'peers' section:")
+    print(f" (Replace 'IP' with your real LAN IP from above)")
+    print(f"   \"{args.node}\": \"IP:{peer_port}\"")
+    print("-" * 50)
+    print(f"3. OPEN YOUR BROWSER AT: http://localhost:{frontend_port}")
+    print("="*50 + "\n")
 
     try:
         backend_p.wait()
