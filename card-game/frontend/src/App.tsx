@@ -216,7 +216,7 @@ const App: React.FC = () => {
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                     <div className={`badge badge-token ${state.token.has_token ? 'active' : ''}`}>
                         <Database size={12} style={{ marginRight: 4 }} />
-                        TOKEN: {state.token.has_token ? 'HELD' : 'PASSING'}
+                        TOKEN HOLDER: {state.token.holder || 'NONE'}
                     </div>
                     <div className={`badge badge-mutex ${state.mutex.state === 'HELD' ? 'active' : ''}`}>
                         <Lock size={12} style={{ marginRight: 4 }} />

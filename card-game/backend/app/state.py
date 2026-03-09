@@ -23,6 +23,7 @@ class StateManager:
         self.center_piles: List[List[Dict]] = [[], []]
         self.hand: List[Dict] = []
         self.deck: List[Dict] = []
+        self.game_active = False
         self.winner: Optional[str] = None
 
         # Distributed Control state
@@ -49,19 +50,24 @@ class StateManager:
             self.lamport_clock = max(self.lamport_clock, received_ts) + 1
             return self.lamport_clock
 
-    def add_log(self, category: str, message: str, details: Any = None):
-        """Internal log addition. Deterministic events should use this."""
+    def record_event(self, timestamp: int, node: str, event_type: str, message: str, details: Any = None):
+        """Stores the globally synchronized event log."""
         log_entry = {
-            "timestamp": self.lamport_clock,
-            "category": category,
-            "message": message,
-            "details": details
+            "timestamp": timestamp,
+            "category": "token" if "TOKEN" in event_type else "game",
+            "message": f"[{event_type}] {message}" if event_type else message,
+            "details": details,
+            "node": node
         }
         self.logs.append(log_entry)
-        # Sort logs by timestamp, then node_id if available in message or metadata
-        # For now, we append as they arrive, but ideally we'd re-sort if we had a full event log.
-        if len(self.logs) > self.max_logs:
+        # Sort logs by timestamp, then by node ID algebraically to ensure consistent ordering across all nodes
+        self.logs.sort(key=lambda x: (x["timestamp"], x.get("node", "")))
+        while len(self.logs) > self.max_logs:
             self.logs.pop(0)
+
+    def add_log(self, category: str, message: str, details: Any = None):
+        # Fallback for old local logs, though we migrate to record_event broadcast
+        self.record_event(self.lamport_clock, self.node_id, "", message, details)
 
     def player_has_card(self, card: Dict) -> bool:
         return any(c["rank"] == card["rank"] and c["suit"] == card["suit"] for c in self.hand)

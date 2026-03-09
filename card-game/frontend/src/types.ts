@@ -12,6 +12,7 @@ export interface StateUpdate {
         deck_size: number;
     };
     token: {
+        holder: string | null;
         has_token: boolean;
         sequence: number;
     };
