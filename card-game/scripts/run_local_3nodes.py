@@ -3,10 +3,10 @@ import time
 import sys
 import os
 
-def run_node(node_id, port):
+def run_node(node_id, port, peers_override):
     config_path = f"nodes/{node_id}.json"
     return subprocess.Popen(
-        [sys.executable, "-m", "backend.app.main", "--config", config_path],
+        [sys.executable, "-m", "backend.app.main", "--config", config_path, "--peers", peers_override],
         # cwd=os.getcwd()
     )
 
@@ -25,9 +25,9 @@ if __name__ == "__main__":
     processes = []
     try:
         print("Starting 3 Python Nodes...")
-        processes.append(run_node("node1", 7001))
-        processes.append(run_node("node2", 7002))
-        processes.append(run_node("node3", 7003))
+        processes.append(run_node("node1", 7001, "node2:127.0.0.1:7002,node3:127.0.0.1:7003"))
+        processes.append(run_node("node2", 7002, "node1:127.0.0.1:7001,node3:127.0.0.1:7003"))
+        processes.append(run_node("node3", 7003, "node1:127.0.0.1:7001,node2:127.0.0.1:7002"))
         
         time.sleep(2) # Give backends a moment
         
