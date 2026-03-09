@@ -67,8 +67,9 @@ class NetworkManager:
         conn.close()
 
     def _maintain_connection(self, node_id: str, addr: str):
-        ip, port_str = addr.split(':')
-        port = int(port_str)
+        ip_raw, port_str = addr.split(':')
+        ip = ip_raw.strip().rstrip('.')
+        port = int(port_str.strip())
         
         while True:
             try:

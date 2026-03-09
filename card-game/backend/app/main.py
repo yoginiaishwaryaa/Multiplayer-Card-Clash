@@ -88,6 +88,8 @@ async def handle_ui_command(cmd: dict):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, help="Path to node config JSON")
+    parser.add_argument("--listen-host", help="Override listen host (e.g. 0.0.0.0)")
+    parser.add_argument("--peers", help="Override peers (format: id1:ip1:port1,id2:ip2:port2)")
     args = parser.parse_args()
 
     # Load config file
@@ -102,6 +104,22 @@ def main():
     with open(config_path, "r") as f:
         config_data = json.load(f)
         config = NodeConfig(**config_data)
+
+    # Apply overrides
+    if args.listen_host:
+        config.listen_host = args.listen_host
+    if args.peers:
+        # Format: node2:10.12.252.166:7002,node3:10.12.249.93:7003
+        new_peers = {}
+        for p_str in args.peers.split(','):
+            if not p_str: continue
+            parts = p_str.split(':')
+            if len(parts) >= 3:
+                p_id = parts[0]
+                p_addr = ":".join(parts[1:])
+                new_peers[p_id] = p_addr
+        if new_peers:
+            config.peers = new_peers
 
     global node
     node = Node(config)
