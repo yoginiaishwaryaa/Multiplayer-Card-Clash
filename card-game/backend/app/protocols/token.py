@@ -13,8 +13,8 @@ class TokenProtocol:
     async def start(self):
         if self.state.has_token:
             self.state.add_log("token", "Starting with token")
-            # Auto-pass after some time in demo mode
-            self._start_pass_task()
+            # Auto-pass disabled for grab-to-play mode
+            # self._start_pass_task()
 
     async def handle_token(self, msg: Message):
         # Avoid late tokens from old rounds if any
@@ -25,8 +25,8 @@ class TokenProtocol:
         self.state.token_sequence = msg.payload.get("sequence", 0)
         self.state.add_log("token", f"Received token (seq: {self.state.token_sequence})")
         
-        # In demo mode, we might auto-pass
-        self._start_pass_task()
+        # Auto-pass disabled for grab-to-play mode
+        # self._start_pass_task()
 
     def _start_pass_task(self):
         if self.pass_task is not None and not self.pass_task.done():

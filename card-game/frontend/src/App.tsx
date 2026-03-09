@@ -156,6 +156,10 @@ const App: React.FC = () => {
         ws.current?.send(JSON.stringify({ action, ...payload }));
 
     const handleSelectCard = (card: Card) => {
+        // Automatically attempt to grab turn if no one has it
+        if (state && !state.game.current_turn) {
+            sendAction('acquire_turn');
+        }
         setSelectedCard(isSameCard(selectedCard, card) ? null : card);
         setHint('');
     };
@@ -196,14 +200,17 @@ const App: React.FC = () => {
                     </h1>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    <div className={`badge badge-token ${state.token.has_token ? 'active' : ''}`}>
-                        <Database size={12} style={{ marginRight: 4 }} />
-                        TOKEN: {state.token.has_token ? 'HELD' : 'PASSING'}
+                    <div className={`badge badge-turn ${state?.game.current_turn === state?.node_id ? 'active pulse' : ''}`}>
+                        <Circle size={12} fill={state?.game.current_turn === state?.node_id ? '#000' : 'rgba(255,255,255,0.4)'} style={{ marginRight: 4 }} />
+                        TURN: {state?.game.current_turn || 'NONE'}
+                        {state?.game.current_turn && state?.game.current_turn === state?.node_id && ` (${state?.game.turn_time_left}s)`}
                     </div>
-                    <div className={`badge badge-mutex ${state.mutex.state === 'HELD' ? 'active' : ''}`}>
-                        <Lock size={12} style={{ marginRight: 4 }} />
-                        MUTEX: {state.mutex.state}
-                    </div>
+                    {state?.snapshot.is_active && (
+                        <div className="badge badge-snapshot">
+                            <Camera size={12} style={{ marginRight: 4 }} className="spin-slow" />
+                            RECORDING...
+                        </div>
+                    )}
                 </div>
             </header>
 
@@ -274,20 +281,16 @@ const App: React.FC = () => {
 
                     {/* ── Controls ── */}
                     <div className="controls">
+                        {state.game.current_turn === state.node_id && (
+                            <button className="btn btn-warning" onClick={() => sendAction('release_turn')}>
+                                <ArrowRight size={16} style={{ marginRight: 8 }} /> Release Turn
+                            </button>
+                        )}
+                        <button className="btn btn-secondary" onClick={() => sendAction('shuffle')} disabled={state.game.current_turn !== state.node_id}>
+                            <RotateCcw size={16} style={{ marginRight: 8 }} /> Reset Piles
+                        </button>
                         <button className="btn btn-primary" onClick={() => sendAction('snapshot')}>
-                            <Camera size={16} style={{ marginRight: 8 }} /> Take Snapshot
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => sendAction('shuffle')}>
-                            <RotateCcw size={16} style={{ marginRight: 8 }} /> Reset Piles (Token)
-                        </button>
-                        <button className="btn btn-warning" onClick={() => sendAction('request_mutex')}>
-                            <Key size={16} style={{ marginRight: 8 }} /> Request Mutex
-                        </button>
-                        <button className="btn btn-token" onClick={() => sendAction('pass_token')} disabled={!state.token.has_token}>
-                            <ArrowRight size={16} style={{ marginRight: 8 }} /> Pass Token
-                        </button>
-                        <button className="btn btn-accent" onClick={() => sendAction('regenerate_token')}>
-                            <RotateCcw size={16} style={{ marginRight: 8 }} /> Force Token
+                            <Camera size={16} style={{ marginRight: 8 }} /> Snapshot
                         </button>
                     </div>
                 </section>

@@ -2,7 +2,7 @@
     "node_id": "node1",
     "listen_host": "0.0.0.0",
     "listen_port": 7001,
-    "ui_port": 8001,
+    "ui_port": 3001,
     "peers": {
         "node2": "ws://localhost:7002/ws/node",
         "node3": "ws://localhost:7003/ws/node"
@@ -12,5 +12,5 @@
         "node2",
         "node3"
     ],
-    "is_initial_token_holder": true
+    "is_initial_token_holder": false
 }

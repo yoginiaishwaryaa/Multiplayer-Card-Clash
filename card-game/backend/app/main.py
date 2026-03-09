@@ -74,6 +74,10 @@ async def handle_ui_command(cmd: dict):
         await node.network.notify_ui(node.state.to_ui_dict())
     elif action == "shuffle":
         await node.ui_shuffle_deck()
+    elif action == "acquire_turn":
+        await node.ui_acquire_turn()
+    elif action == "release_turn":
+        await node.ui_release_turn()
     elif action == "snapshot":
         await node.snapshot_proto.initiate()
     elif action == "pass_token":
