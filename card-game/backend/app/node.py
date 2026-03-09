@@ -24,13 +24,8 @@ class Node:
     async def start(self):
         await self.network.connect_to_peers()
         asyncio.create_task(self._sync_maintenance_loop())
-        asyncio.create_task(self._lobby_monitor())
 
-    async def _lobby_monitor(self):
-        # Only the first node acts as initial setup coordinator
-        if self.config.node_id != "node1":
-            return
-            
+    async def _initialize_game(self):
         # Wait until 3 nodes total are in the game (me + 2 peers = 3)
         while len(self.network.peers) < 2:
             await asyncio.sleep(1.0)
@@ -46,18 +41,8 @@ class Node:
         await self.network.broadcast(ready_msg)
         await self.handle_game_action(ready_msg)
         
-        # 2. Countdown Broadcast
-        for count in ["3", "2", "1", "START"]:
-            await asyncio.sleep(1.0)
-            count_msg = Message(
-                type="EVENT_LOG", src=self.config.node_id, dst="all",
-                id=str(uuid.uuid4()), ts=await self.state.get_next_ts(),
-                payload={"event_type": "COUNTDOWN", "message": count}
-            )
-            await self.network.broadcast(count_msg)
-            await self._handle_event_log(count_msg)
-            
-        # 3. GAME_INIT (Authoritative initial state generation)
+        # 2. GAME_INIT (Authoritative initial state generation)
+        # Seed or set the main 2 center cards symmetrically to all + hands
         import random
         from .state import build_deck
         seed = random.randint(1000, 999999)
@@ -86,7 +71,27 @@ class Node:
         await self.network.broadcast(init_msg)
         await self.handle_game_action(init_msg)
 
-        # 4. GAME_START
+        # 3. Countdown Broadcast (3..2..1)
+        for count in ["3", "2", "1"]:
+            await asyncio.sleep(1.0)
+            count_msg = Message(
+                type="EVENT_LOG", src=self.config.node_id, dst="all",
+                id=str(uuid.uuid4()), ts=await self.state.get_next_ts(),
+                payload={"event_type": "COUNTDOWN", "message": count}
+            )
+            await self.network.broadcast(count_msg)
+            await self._handle_event_log(count_msg)
+            
+        # 4. START sequence end and Unblock gameplay
+        await asyncio.sleep(1.0)
+        start_count_msg = Message(
+            type="EVENT_LOG", src=self.config.node_id, dst="all",
+            id=str(uuid.uuid4()), ts=await self.state.get_next_ts(),
+            payload={"event_type": "COUNTDOWN", "message": "START"}
+        )
+        await self.network.broadcast(start_count_msg)
+        await self._handle_event_log(start_count_msg)
+
         start_msg = Message(
             type="GAME_ACTION", src=self.config.node_id, dst="all",
             id=str(uuid.uuid4()), ts=await self.state.get_next_ts(),
@@ -113,16 +118,11 @@ class Node:
         )
         await self.network.broadcast(sync_msg)
 
-    async def broadcast_game_start(self):
-        # We handle setup uniformly in GAME_INIT now.
-        # This acts as a shuffle button for reset.
-        if self.config.node_id == "node1":
-            await self._lobby_monitor()
-
     async def _handle_event_log(self, msg: Message):
         event_type = msg.payload.get("event_type", "INFO")
         message = msg.payload.get("message", "")
         self.state.record_event(node=msg.src, timestamp=msg.ts, event_type=event_type, message=message)
+        await self.network.notify_ui(self.state.to_ui_dict())
 
     async def handle_peer_message(self, msg: Message):
         await self.state.update_ts(msg.ts)
@@ -199,6 +199,8 @@ class Node:
                     }
                 )
                 await self.network.send_to_peer(sender, sync_resp)
+                
+        await self.network.notify_ui(self.state.to_ui_dict())
 
     async def ui_play_card(self, pile_idx: int, card: dict):
         """High-speed move attempt with competition and timeout."""
@@ -234,14 +236,13 @@ class Node:
         try:
             # We wrap the commitment in a 2s timeout envelope
             await asyncio.wait_for(self._commit_move(pile_idx, card), timeout=2.0)
-            await self._broadcast_action("TOKEN_RELEASED")
+            # We purposely do not release the visual token so it shows the active grabber
         except asyncio.TimeoutError:
             # Node took too long to complete the network broadcast of the card!
             timeout_msg = await self._broadcast_action("TOKEN_TIMEOUT")
             await self.handle_game_action(timeout_msg)
         finally:
             await self.mutex_proto.release()
-            self.state.token_holder = None
         
         return True
 
@@ -314,7 +315,7 @@ class Node:
 
     async def ui_shuffle_deck(self):
         """Force initialization (Leader action)."""
-        await self.broadcast_game_start()
+        asyncio.create_task(self._initialize_game())
         return True
 
     async def ui_draw_card(self):

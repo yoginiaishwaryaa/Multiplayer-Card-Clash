@@ -98,18 +98,16 @@ class NetworkManager:
 
     def _read_line(self, conn: socket.socket) -> str:
         """Reads from socket until a newline is found."""
-        buffer = []
+        buffer = bytearray()
         while True:
-            # We don't want to receive huge chunks at once to ensure we don't accidentally read past a newline.
-            # In production you'd use a better buffered reader. This is kept simpler.
             try:
-                char = conn.recv(1).decode()
-                if not char:
+                b = conn.recv(1)
+                if not b:
                     return ""
-                if char == '\n':
-                    return "".join(buffer)
-                buffer.append(char)
-            except:
+                if b == b'\n':
+                    return buffer.decode('utf-8', errors='replace')
+                buffer.extend(b)
+            except Exception as e:
                 return ""
 
     async def send_to_peer(self, node_id: str, msg: Message):
