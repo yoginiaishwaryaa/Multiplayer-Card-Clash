@@ -1,6 +1,8 @@
 import asyncio
 import json
-import websockets
+import socket
+import threading
+import time
 from typing import Dict, Callable, Awaitable, List, Optional, Any
 from .models import Message, NodeConfig
 from .utils import log_debug
@@ -9,42 +11,116 @@ class NetworkManager:
     def __init__(self, config: NodeConfig, on_message: Callable[[Message], Awaitable[None]]):
         self.config = config
         self.on_message = on_message
-        self.peers: Dict[str, websockets.WebSocketClientProtocol] = {}
+        self.peers: Dict[str, socket.socket] = {}
         self.ui_websockets = set()
         self.latency_min = 0.05 # 50ms
         self.latency_max = 0.2  # 200ms
+        
+        # Loop will be set during connect_to_peers which is called from within the event loop
+        self.loop = None
+        
+        # Setup Server socket
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server.bind((config.listen_host, config.listen_port))
+        self.server.listen()
 
     async def connect_to_peers(self):
-        for node_id, url in self.config.peers.items():
-            asyncio.create_task(self._maintain_connection(node_id, url))
+        self.loop = asyncio.get_running_loop()
+        
+        # Start server accept thread
+        threading.Thread(target=self._accept_connections, daemon=True).start()
+        
+        # Start client connection threads
+        for node_id, addr in self.config.peers.items():
+            threading.Thread(target=self._maintain_connection, args=(node_id, addr), daemon=True).start()
 
-    async def _maintain_connection(self, node_id: str, url: str):
+    def _accept_connections(self):
+        print(f"[{self.config.node_id}] TCP Server running at {self.config.listen_port}")
         while True:
             try:
-                async with websockets.connect(url) as ws:
-                    print(f"Connected to peer {node_id} at {url}")
-                    self.peers[node_id] = ws
-                    # Send hello to identify ourselves?? 
-                    # In this setup, we assume the server knows who is connecting or we include 'src' in every message.
-                    async for message_info in ws:
-                        data = json.loads(message_info)
-                        msg = Message(**data)
-                        await self.on_message(msg)
+                conn, addr = self.server.accept()
+                threading.Thread(target=self._handle_client, args=(conn, addr), daemon=True).start()
             except Exception as e:
-                print(f"Connection lost to {node_id} ({url}): {e}")
+                print(f"[TCP Server Error] {e}")
+                break
+
+    def _handle_client(self, conn: socket.socket, addr: tuple):
+        print(f"[{self.config.node_id}] Accepted incoming connection from {addr}")
+        # The incoming connection is just a receiver channel.
+        # We don't save it to self.peers, since we only use self.peers for sending.
+        
+        while True:
+            try:
+                # Read line-delimited JSON
+                data = self._read_line(conn)
+                if not data:
+                    break
+                
+                msg_dict = json.loads(data)
+                msg = Message(**msg_dict)
+                # Pass back to the async event loop to handle game state updates safely
+                asyncio.run_coroutine_threadsafe(self.on_message(msg), self.loop)
+            except Exception as e:
+                break
+        
+        conn.close()
+
+    def _maintain_connection(self, node_id: str, addr: str):
+        ip, port_str = addr.split(':')
+        port = int(port_str)
+        
+        while True:
+            try:
+                client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                client.connect((ip, port))
+                print(f"[{self.config.node_id}] Outbound connected to peer {node_id} at {addr}")
+                self.peers[node_id] = client
+                
+                # Keep thread alive to detect disconnects (we only send on this socket)
+                # If recv returns empty, connection is dead.
+                while True:
+                    data = client.recv(1024)
+                    if not data:
+                        break
+            except Exception as e:
+                pass
+            finally:
                 if node_id in self.peers:
                     del self.peers[node_id]
-            await asyncio.sleep(2) # Retry delay
+                try:
+                    client.close()
+                except:
+                    pass
+            
+            time.sleep(2)  # Retry delay
+
+    def _read_line(self, conn: socket.socket) -> str:
+        """Reads from socket until a newline is found."""
+        buffer = []
+        while True:
+            # We don't want to receive huge chunks at once to ensure we don't accidentally read past a newline.
+            # In production you'd use a better buffered reader. This is kept simpler.
+            try:
+                char = conn.recv(1).decode()
+                if not char:
+                    return ""
+                if char == '\n':
+                    return "".join(buffer)
+                buffer.append(char)
+            except:
+                return ""
 
     async def send_to_peer(self, node_id: str, msg: Message):
         if node_id in self.peers:
-            # Simulate network latency
             import random
             delay = random.uniform(self.latency_min, self.latency_max)
             await asyncio.sleep(delay)
             
             try:
-                await self.peers[node_id].send(msg.model_dump_json())
+                payload = msg.model_dump_json() + "\n"
+                # Send inside a separate thread space or use sendall 
+                self.peers[node_id].sendall(payload.encode())
             except Exception as e:
                 print(f"Failed to send to {node_id}: {e}")
 
@@ -63,11 +139,11 @@ class NetworkManager:
         
         payload = json.dumps({"type": "STATE_UPDATE", "data": state_dict})
         disconnected = set()
-        for ws in self.ui_websockets:
+        for ws in list(self.ui_websockets):  # iterate over a snapshot copy
             try:
                 await ws.send_text(payload)
             except Exception:
                 disconnected.add(ws)
         
         for ws in disconnected:
-            self.ui_websockets.remove(ws)
+            self.ui_websockets.discard(ws)

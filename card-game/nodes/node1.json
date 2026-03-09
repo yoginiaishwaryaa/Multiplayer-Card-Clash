@@ -4,8 +4,8 @@
     "listen_port": 7001,
     "ui_port": 8001,
     "peers": {
-        "node2": "ws://localhost:7002/ws/node",
-        "node3": "ws://localhost:7003/ws/node"
+        "node2": "127.0.0.1:7002",
+        "node3": "127.0.0.1:7003"
     },
     "ring_order": [
         "node1",

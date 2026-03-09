@@ -29,6 +29,13 @@ class MutexProtocol:
         )
         await self.network.broadcast(msg)
         await self.network.notify_ui(self.state.to_ui_dict())
+        
+        # If we have no active peer connections, we immediately hold the mutex
+        if len(self.network.peers) == 0:
+            self.state.mutex_state = "HELD"
+            self.state.mutex_event.set()
+            self.state.add_log("mutex", "Entered Critical Section (Isolated Node)")
+            await self.network.notify_ui(self.state.to_ui_dict())
 
     async def handle_request(self, msg: Message):
         req_ts = msg.ts
@@ -61,8 +68,10 @@ class MutexProtocol:
             return
             
         self.state.mutex_replies_received.add(msg.src)
-        # Total nodes = len(peers) + 1 (self). We need replies from all other nodes.
-        peer_count = len(self.network.config.peers)
+        
+        # Total nodes we need replies from = currently connected peers
+        # If a peer hasn't connected or drops, don't wait indefinitely for them!
+        peer_count = len(self.network.peers)
         
         if len(self.state.mutex_replies_received) >= peer_count:
             self.state.mutex_state = "HELD"

@@ -58,8 +58,8 @@ async def websocket_ui(websocket: WebSocket):
             data = await websocket.receive_text()
             message = json.loads(data)
             await handle_ui_command(message)
-    except WebSocketDisconnect:
-        node.network.ui_websockets.remove(websocket)
+    except (WebSocketDisconnect, RuntimeError, Exception):
+        node.network.ui_websockets.discard(websocket)
 
 async def handle_ui_command(cmd: dict):
     if not node:
@@ -83,21 +83,7 @@ async def handle_ui_command(cmd: dict):
     elif action == "regenerate_token":
         await node.token_proto.regenerate_token()
 
-@app.websocket("/ws/node")
-async def websocket_node(websocket: WebSocket):
-    await websocket.accept()
-    if not node:
-        await websocket.close()
-        return
-    # In this P2P setup, we accept connections from peers.
-    try:
-        while True:
-            data = await websocket.receive_text()
-            msg_dict = json.loads(data)
-            msg = Message(**msg_dict)
-            await node.handle_peer_message(msg)
-    except WebSocketDisconnect:
-        pass
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -120,7 +106,7 @@ def main():
     global node
     node = Node(config)
     
-    uvicorn.run(app, host=config.listen_host, port=config.listen_port)
+    uvicorn.run(app, host=config.listen_host, port=config.ui_port)
 
 if __name__ == "__main__":
     main()

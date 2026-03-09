@@ -32,9 +32,9 @@ if __name__ == "__main__":
         time.sleep(2) # Give backends a moment
         
         print("Starting 3 React Frontends...")
-        processes.append(run_frontend(3001, 7001))
-        processes.append(run_frontend(3002, 7002))
-        processes.append(run_frontend(3003, 7003))
+        processes.append(run_frontend(3001, 8001))
+        processes.append(run_frontend(3002, 8002))
+        processes.append(run_frontend(3003, 8003))
         
         print("\nAll nodes running!")
         print("Node 1: http://localhost:3001")

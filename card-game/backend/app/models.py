@@ -18,7 +18,7 @@ class NodeConfig(BaseModel):
     listen_host: str
     listen_port: int
     ui_port: int
-    peers: Dict[str, str]  # node_id -> ws_url
+    peers: Dict[str, str]  # node_id -> IP:port (e.g. 192.168.1.10:7002)
     ring_order: List[str]
     is_initial_token_holder: bool = False
 

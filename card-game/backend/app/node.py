@@ -98,6 +98,8 @@ class Node:
             self.state.add_log("mutex", "Failed to acquire mutex (timeout)")
             if self.state.mutex_state == "WANTED":
                 self.state.mutex_state = "RELEASED"
+                # Clear state to allow future requests
+                self.state.mutex_replies_received.clear()
             return False
 
         if self.state.mutex_state != "HELD":
