@@ -28,6 +28,12 @@ class Node:
     async def start(self):
         await self.network.connect_to_peers()
         await self.token_proto.start()
+        
+        # If we are the initial token holder, initialize the center piles for everyone
+        if self.config.is_initial_token_holder:
+            # Wait a few seconds for other nodes to start and connect
+            await asyncio.sleep(2.0)
+            await self.ui_shuffle_deck()
 
     async def handle_peer_message(self, msg: Message):
         await self.state.update_ts(msg.ts)
@@ -58,11 +64,19 @@ class Node:
             self.state.center_piles[pile_idx].append(card)
             self.state.add_log("game", f"Player {msg.src} played {card_label(card)} to pile {pile_idx + 1}")
         elif action == "RESET_PILES":
-            from .state import build_deck
-            tmp = build_deck()
-            self.state.center_piles = [[tmp.pop()], [tmp.pop()]]
+            new_piles = msg.payload.get("center_piles")
+            if new_piles:
+                self.state.center_piles = new_piles
+            else:
+                # Fallback if for some reason cards weren't sent
+                from .state import build_deck
+                tmp = build_deck()
+                self.state.center_piles = [[tmp.pop()], [tmp.pop()]]
+            
             self.state.winner = None  # Reset winner on pile reset
             self.state.add_log("game", f"Center piles reset by {msg.src}")
+        elif action == "PLAYER_DREW":
+            self.state.add_log("game", f"Player {msg.src} drew a card")
         elif action == "PLAYER_WON":
             winner_id = msg.payload["winner"]
             self.state.winner = winner_id
@@ -187,6 +201,18 @@ class Node:
             )
 
         self.state.hand.append(drawn)
+        
+        # Broadcast that we drew so others can log it
+        draw_msg = Message(
+            type="GAME_ACTION",
+            src=self.config.node_id,
+            dst="all",
+            id=str(uuid.uuid4()),
+            ts=await self.state.get_next_ts(),
+            payload={"action": "PLAYER_DREW"}
+        )
+        await self.network.broadcast(draw_msg)
+        
         return True
 
     async def ui_shuffle_deck(self):
@@ -194,7 +220,8 @@ class Node:
         if await self.token_proto.use_token_for_action("Reset Center Piles"):
             from .state import build_deck
             tmp = build_deck()
-            self.state.center_piles = [[tmp.pop()], [tmp.pop()]]
+            new_piles = [[tmp.pop()], [tmp.pop()]]
+            self.state.center_piles = new_piles
             self.state.winner = None
             self.state.add_log("game", "Center piles reset via Token")
             
@@ -204,7 +231,10 @@ class Node:
                 dst="all",
                 id=str(uuid.uuid4()),
                 ts=await self.state.get_next_ts(),
-                payload={"action": "RESET_PILES"}
+                payload={
+                    "action": "RESET_PILES",
+                    "center_piles": new_piles
+                }
             )
             await self.network.broadcast(msg)
             return True
