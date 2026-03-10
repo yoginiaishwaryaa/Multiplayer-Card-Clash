@@ -29,16 +29,17 @@ class Node:
         await self.network.connect_to_peers()
         await self.token_proto.start()
         
-        # If we are node1, wait a bit and then send initial state to all
-        if self.config.node_id == "node1":
-            asyncio.create_task(self._initial_sync_loop())
-            
+        # If we are node1, we NO LONGER start sync automatically.
+        # It's triggered by a UI button to ensure everyone is ready.
+
         # Start turn timeout monitor
         asyncio.create_task(self._turn_monitor_loop())
 
-    async def _initial_sync_loop(self):
-        """Node 1 waits for peers and then broadcasts initial game state."""
-        await asyncio.sleep(5) # Give peers time to connect
+    async def ui_distribute_cards(self):
+        """Node 1 manually broadcasts initial game state when triggered by UI."""
+        if self.config.node_id != "node1":
+            return
+            
         from .state import build_deck
         full_deck = build_deck()
         
@@ -58,6 +59,14 @@ class Node:
             "center_piles": [cp1, cp2],
             "deck": full_deck
         }
+        
+        # Check active connections
+        active_ids = list(self.network.peers.keys())
+        all_peers = list(self.config.peers.keys())
+        missing = [p for p in all_peers if p not in active_ids]
+        if missing:
+            self.state.add_log("system", f"WARNING: Distributing cards but peers are missing: {', '.join(missing)}")
+        
         
         msg = Message(
             type="GAME_ACTION",

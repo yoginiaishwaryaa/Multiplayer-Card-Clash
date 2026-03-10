@@ -80,6 +80,8 @@ async def handle_ui_command(cmd: dict):
         await node.ui_release_turn()
     elif action == "snapshot":
         await node.snapshot_proto.initiate()
+    elif action == "distribute_cards":
+        await node.ui_distribute_cards()
     elif action == "pass_token":
         await node.token_proto.pass_token()
     elif action == "request_mutex":

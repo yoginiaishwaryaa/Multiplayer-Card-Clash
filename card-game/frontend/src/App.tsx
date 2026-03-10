@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import './index.css';
 import { StateUpdate, SnapshotComplete, Card } from './types';
 import {
-    Database, Lock, Key, Camera, RotateCcw, ArrowRight, ShieldCheck, Circle
+    Database, Lock, Key, Camera, RotateCcw, ArrowRight, ShieldCheck, Circle, Play
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -30,13 +30,15 @@ function isSameCard(a: Card | null, b: Card): boolean {
 // ── Playing Card Component ────────────────────────────────────────────────────
 
 interface PlayingCardProps {
-    card: Card;
+    card: Card | null;
     selected?: boolean;
     onClick?: () => void;
     size?: 'sm' | 'md' | 'lg';
 }
 
 const PlayingCard: React.FC<PlayingCardProps> = ({ card, selected, onClick, size = 'md' }) => {
+    if (!card) return <div className="playing-card empty" style={{ width: 64, height: 90 }} />;
+
     const red = isRed(card.suit);
     const label = rankLabel(card.rank);
     const suit = card.suit;
@@ -223,14 +225,18 @@ const App: React.FC = () => {
                             Center Piles — Click to Play Selected Card
                         </div>
                         <div className="piles-container">
-                            {state.game.center_piles.map((pile, idx) => {
-                                const topCard = pile[pile.length - 1];
+                            {(state?.game.center_piles || []).map((pile, idx) => {
+                                const topCard = pile && pile.length > 0 ? pile[pile.length - 1] : null;
                                 return (
-                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                                        <PlayingCard card={topCard} size="lg" onClick={() => handlePlayCard(idx)} />
-                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                            Pile {idx + 1} · {pile.length} card{pile.length !== 1 ? 's' : ''}
-                                        </div>
+                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                                        <PlayingCard
+                                            card={topCard}
+                                            size="lg"
+                                            onClick={() => selectedCard && handlePlayCard(idx)}
+                                        />
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                            PILE {idx + 1} ({pile?.length || 0})
+                                        </span>
                                     </div>
                                 );
                             })}
@@ -281,6 +287,11 @@ const App: React.FC = () => {
 
                     {/* ── Controls ── */}
                     <div className="controls">
+                        {state.node_id === 'node1' && state.game.center_piles[0]?.length === 0 && (
+                            <button className="btn btn-primary" onClick={() => sendAction('distribute_cards')}>
+                                <Play size={16} style={{ marginRight: 8 }} /> Start Game
+                            </button>
+                        )}
                         {state.game.current_turn === state.node_id && (
                             <button className="btn btn-warning" onClick={() => sendAction('release_turn')}>
                                 <ArrowRight size={16} style={{ marginRight: 8 }} /> Release Turn
