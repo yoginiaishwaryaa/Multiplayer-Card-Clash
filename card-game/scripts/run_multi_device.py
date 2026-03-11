@@ -22,19 +22,24 @@ def get_config(node_id):
     with open(config_path, "r") as f:
         return json.load(f)
 
-def run_node(node_id):
+def run_node(node_id, signaling_url=None):
     config_path = f"nodes/{node_id}.json"
-    return subprocess.Popen([sys.executable, "-m", "backend.app.main", "--config", config_path])
+    cmd = [sys.executable, "-m", "backend.app.main", "--config", config_path]
+    if signaling_url:
+        cmd.extend(["--signaling-url", signaling_url])
+    return subprocess.Popen(cmd)
 
 def run_frontend(port, backend_port):
     env = os.environ.copy()
     env["VITE_NODE_UI_WS"] = f"ws://localhost:{backend_port}/ws/ui"
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+    # Use --host to allow access from other devices in the LAN
     return subprocess.Popen([npm_cmd, "run", "dev", "--", "--port", str(port), "--host"], cwd="frontend", env=env)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run a single node with auto-detected LAN IP')
     parser.add_argument('--node', type=str, required=True, help='Which node to run? (node1, node2, node3)')
+    parser.add_argument('--signaling-url', type=str, help='Signaling server URL (e.g. ws://192.168.1.10:8001/ws/signaling)')
     args = parser.parse_args()
 
     lan_ip = get_lan_ip()
@@ -47,7 +52,7 @@ if __name__ == "__main__":
     backend_port = config["ui_port"]
 
     print(f"Starting Backend {args.node} on port {backend_port}...")
-    backend_p = run_node(args.node)
+    backend_p = run_node(args.node, args.signaling_url)
     
     import time
     time.sleep(1)
@@ -56,8 +61,11 @@ if __name__ == "__main__":
     frontend_p = run_frontend(frontend_port, backend_port)
 
     print("\n===============================")
-    print(f"Node is running! Tell other devices to connect their peers to:")
-    print(f" {lan_ip}:{backend_port}")
+    print(f"Node is running!")
+    if args.node == "node1":
+        print(f"YOU ARE THE HOST.")
+        print(f"Others should join using: --signaling-url ws://{lan_ip}:8001/ws/signaling")
+    
     print(f"\nAccess the UI on this device at: http://localhost:{frontend_port}")
     print(f"Access the UI remotely at: http://{lan_ip}:{frontend_port}")
     print("===============================\n")
