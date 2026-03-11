@@ -21,8 +21,9 @@ class NetworkManager:
     async def _maintain_connection(self, node_id: str, url: str):
         while True:
             try:
-                async with websockets.connect(url) as ws:
-                    print(f"Connected to peer {node_id} at {url}")
+                print(f"[{self.config.node_id}] Attempting to connect to peer {node_id} at {url}...")
+                async with websockets.connect(url, open_timeout=5, close_timeout=5) as ws:
+                    print(f"[{self.config.node_id}] SUCCESS: Connected to peer {node_id}")
                     self.peers[node_id] = ws
                     # Send hello to identify ourselves?? 
                     # In this setup, we assume the server knows who is connecting or we include 'src' in every message.
