@@ -154,7 +154,8 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const env = (import.meta as any).env;
-        const wsUrl = env.VITE_NODE_UI_WS || `ws://${window.location.hostname}:${parseInt(window.location.port) - 1000}/ws/ui`;
+        const backendPort = 8001; // Standard port for the centralized server
+        const wsUrl = env.VITE_NODE_UI_WS || `ws://${window.location.hostname}:${backendPort}/ws/ui`;
 
         const connect = () => {
             const socket = new WebSocket(wsUrl);

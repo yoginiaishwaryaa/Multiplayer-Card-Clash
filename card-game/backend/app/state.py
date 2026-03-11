@@ -90,3 +90,4 @@ class StateManager:
             },
             "logs": self.logs[::-1] # Newest first for UI
         }
+
