@@ -32,7 +32,7 @@ def run_node(node_id):
     
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
     frontend_proc = subprocess.Popen(
-        [npm_cmd, "run", "dev", "--", "--port", str(frontend_port)],
+        [npm_cmd, "run", "dev", "--", "--port", str(frontend_port), "--host"],
         cwd="frontend",
         env=env
     )

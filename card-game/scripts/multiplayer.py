@@ -57,7 +57,7 @@ def run_frontend(node_id, network_config):
     
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
     return subprocess.Popen(
-        [npm_cmd, "run", "dev", "--", "--port", str(ui_port)],
+        [npm_cmd, "run", "dev", "--", "--port", str(ui_port), "--host"],
         cwd="frontend",
         env=env
     )
