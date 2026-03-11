@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import './index.css';
 import { StateUpdate, SnapshotComplete, Card } from './types';
 import {
-    Database, Lock, Key, Camera, RotateCcw, ArrowRight, ShieldCheck, Circle
+    Database, Lock, Key, Camera, RotateCcw, ArrowRight, ShieldCheck, Circle, Play
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -30,13 +30,15 @@ function isSameCard(a: Card | null, b: Card): boolean {
 // ── Playing Card Component ────────────────────────────────────────────────────
 
 interface PlayingCardProps {
-    card: Card;
+    card: Card | null;
     selected?: boolean;
     onClick?: () => void;
     size?: 'sm' | 'md' | 'lg';
 }
 
 const PlayingCard: React.FC<PlayingCardProps> = ({ card, selected, onClick, size = 'md' }) => {
+    if (!card) return <div className="playing-card empty" style={{ width: 64, height: 90 }} />;
+
     const red = isRed(card.suit);
     const label = rankLabel(card.rank);
     const suit = card.suit;
@@ -156,6 +158,10 @@ const App: React.FC = () => {
         ws.current?.send(JSON.stringify({ action, ...payload }));
 
     const handleSelectCard = (card: Card) => {
+        // Automatically attempt to grab turn if no one has it
+        if (state && !state.game.current_turn) {
+            sendAction('acquire_turn');
+        }
         setSelectedCard(isSameCard(selectedCard, card) ? null : card);
         setHint('');
     };
@@ -196,14 +202,17 @@ const App: React.FC = () => {
                     </h1>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    <div className={`badge badge-token ${state.token.has_token ? 'active' : ''}`}>
-                        <Database size={12} style={{ marginRight: 4 }} />
-                        TOKEN: {state.token.has_token ? 'HELD' : 'PASSING'}
+                    <div className={`badge badge-turn ${state?.game.current_turn === state?.node_id ? 'active pulse' : ''}`}>
+                        <Circle size={12} fill={state?.game.current_turn === state?.node_id ? '#000' : 'rgba(255,255,255,0.4)'} style={{ marginRight: 4 }} />
+                        TURN: {state?.game.current_turn || 'NONE'}
+                        {state?.game.current_turn && state?.game.current_turn === state?.node_id && ` (${state?.game.turn_time_left}s)`}
                     </div>
-                    <div className={`badge badge-mutex ${state.mutex.state === 'HELD' ? 'active' : ''}`}>
-                        <Lock size={12} style={{ marginRight: 4 }} />
-                        MUTEX: {state.mutex.state}
-                    </div>
+                    {state?.snapshot.is_active && (
+                        <div className="badge badge-snapshot">
+                            <Camera size={12} style={{ marginRight: 4 }} className="spin-slow" />
+                            RECORDING...
+                        </div>
+                    )}
                 </div>
             </header>
 
@@ -216,14 +225,18 @@ const App: React.FC = () => {
                             Center Piles — Click to Play Selected Card
                         </div>
                         <div className="piles-container">
-                            {state.game.center_piles.map((pile, idx) => {
-                                const topCard = pile[pile.length - 1];
+                            {(state?.game.center_piles || []).map((pile, idx) => {
+                                const topCard = pile && pile.length > 0 ? pile[pile.length - 1] : null;
                                 return (
-                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                                        <PlayingCard card={topCard} size="lg" onClick={() => handlePlayCard(idx)} />
-                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                            Pile {idx + 1} · {pile.length} card{pile.length !== 1 ? 's' : ''}
-                                        </div>
+                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                                        <PlayingCard
+                                            card={topCard}
+                                            size="lg"
+                                            onClick={() => selectedCard && handlePlayCard(idx)}
+                                        />
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                            PILE {idx + 1} ({pile?.length || 0})
+                                        </span>
                                     </div>
                                 );
                             })}
@@ -274,20 +287,21 @@ const App: React.FC = () => {
 
                     {/* ── Controls ── */}
                     <div className="controls">
+                        {state.node_id === 'node1' && state.game.center_piles[0]?.length === 0 && (
+                            <button className="btn btn-primary" onClick={() => sendAction('distribute_cards')}>
+                                <Play size={16} style={{ marginRight: 8 }} /> Start Game
+                            </button>
+                        )}
+                        {state.game.current_turn === state.node_id && (
+                            <button className="btn btn-warning" onClick={() => sendAction('release_turn')}>
+                                <ArrowRight size={16} style={{ marginRight: 8 }} /> Release Turn
+                            </button>
+                        )}
+                        <button className="btn btn-secondary" onClick={() => sendAction('shuffle')} disabled={state.game.current_turn !== state.node_id}>
+                            <RotateCcw size={16} style={{ marginRight: 8 }} /> Reset Piles
+                        </button>
                         <button className="btn btn-primary" onClick={() => sendAction('snapshot')}>
-                            <Camera size={16} style={{ marginRight: 8 }} /> Take Snapshot
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => sendAction('shuffle')}>
-                            <RotateCcw size={16} style={{ marginRight: 8 }} /> Reset Piles (Token)
-                        </button>
-                        <button className="btn btn-warning" onClick={() => sendAction('request_mutex')}>
-                            <Key size={16} style={{ marginRight: 8 }} /> Request Mutex
-                        </button>
-                        <button className="btn btn-token" onClick={() => sendAction('pass_token')} disabled={!state.token.has_token}>
-                            <ArrowRight size={16} style={{ marginRight: 8 }} /> Pass Token
-                        </button>
-                        <button className="btn btn-accent" onClick={() => sendAction('regenerate_token')}>
-                            <RotateCcw size={16} style={{ marginRight: 8 }} /> Force Token
+                            <Camera size={16} style={{ marginRight: 8 }} /> Snapshot
                         </button>
                     </div>
                 </section>

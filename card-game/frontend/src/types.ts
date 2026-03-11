@@ -10,6 +10,8 @@ export interface StateUpdate {
         center_piles: Card[][];
         hand: Card[];
         deck_size: number;
+        current_turn: string | null;
+        turn_time_left: number;
     };
     token: {
         has_token: boolean;

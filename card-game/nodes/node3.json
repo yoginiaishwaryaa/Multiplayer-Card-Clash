@@ -2,7 +2,7 @@
     "node_id": "node3",
     "listen_host": "0.0.0.0",
     "listen_port": 7003,
-    "ui_port": 8003,
+    "ui_port": 3003,
     "peers": {
         "node1": "ws://localhost:7001/ws/node",
         "node2": "ws://localhost:7002/ws/node"

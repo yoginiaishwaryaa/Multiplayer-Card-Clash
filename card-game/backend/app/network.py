@@ -19,22 +19,28 @@ class NetworkManager:
             asyncio.create_task(self._maintain_connection(node_id, url))
 
     async def _maintain_connection(self, node_id: str, url: str):
+        first_attempt = True
         while True:
             try:
-                async with websockets.connect(url) as ws:
-                    print(f"Connected to peer {node_id} at {url}")
+                if first_attempt:
+                    print(f"[{self.config.node_id}] Attempting to connect to peer {node_id} at {url}...")
+                
+                async with websockets.connect(url, open_timeout=5, close_timeout=5) as ws:
+                    print(f"[{self.config.node_id}] SUCCESS: Connected to peer {node_id}")
                     self.peers[node_id] = ws
-                    # Send hello to identify ourselves?? 
-                    # In this setup, we assume the server knows who is connecting or we include 'src' in every message.
+                    first_attempt = True # Reset for next disconnect
                     async for message_info in ws:
                         data = json.loads(message_info)
                         msg = Message(**data)
                         await self.on_message(msg)
             except Exception as e:
-                print(f"Connection lost to {node_id} ({url}): {e}")
+                if first_attempt:
+                    print(f"Connection failed to {node_id} ({url}). Will retry silently... (Error: {e})")
+                    first_attempt = False
+                
                 if node_id in self.peers:
                     del self.peers[node_id]
-            await asyncio.sleep(2) # Retry delay
+            await asyncio.sleep(5) # Increased retry delay to 5s for less noise
 
     async def send_to_peer(self, node_id: str, msg: Message):
         if node_id in self.peers:

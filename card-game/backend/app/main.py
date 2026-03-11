@@ -11,7 +11,18 @@ from typing import Optional
 from .models import NodeConfig, Message
 from .node import Node
 
-app = FastAPI()
+from contextlib import asynccontextmanager
+
+# Global node instance
+node: Optional[Node] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if node:
+        asyncio.create_task(node.start())
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,14 +30,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Global node instance
-node: Optional[Node] = None
-
-@app.on_event("startup")
-async def startup_event():
-    if node:
-        asyncio.create_task(node.start())
 
 @app.get("/health")
 async def health():
@@ -74,8 +77,14 @@ async def handle_ui_command(cmd: dict):
         await node.network.notify_ui(node.state.to_ui_dict())
     elif action == "shuffle":
         await node.ui_shuffle_deck()
+    elif action == "acquire_turn":
+        await node.ui_acquire_turn()
+    elif action == "release_turn":
+        await node.ui_release_turn()
     elif action == "snapshot":
         await node.snapshot_proto.initiate()
+    elif action == "distribute_cards":
+        await node.ui_distribute_cards()
     elif action == "pass_token":
         await node.token_proto.pass_token()
     elif action == "request_mutex":
@@ -102,6 +111,7 @@ async def websocket_node(websocket: WebSocket):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, help="Path to node config JSON")
+    parser.add_argument("--peer", action="append", help="Override peer address (e.g., node2=ws://192.168.1.11:7002/ws/node)")
     args = parser.parse_args()
 
     # Load config file
@@ -116,6 +126,13 @@ def main():
     with open(config_path, "r") as f:
         config_data = json.load(f)
         config = NodeConfig(**config_data)
+
+    if args.peer:
+        for p_override in args.peer:
+            if "=" in p_override:
+                nid, url = p_override.split("=", 1)
+                config.peers[nid] = url
+                print(f"DEBUG: Overriding peer {nid} with {url}")
 
     global node
     node = Node(config)

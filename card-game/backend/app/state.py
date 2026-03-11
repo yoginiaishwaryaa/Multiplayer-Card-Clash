@@ -18,24 +18,23 @@ class StateManager:
         self.lamport_clock = 0
         self.clock_lock = asyncio.Lock()
         
-        # Game State
-        full_deck = build_deck()
-        start_card1 = full_deck.pop()
-        start_card2 = full_deck.pop()
-        self.center_piles: List[List[Dict]] = [[start_card1], [start_card2]]
+        # Game State (Initially empty until synced by Node 1)
+        self.center_piles: List[List[Dict]] = [[], []]
+        self.hand: List[Dict] = []
+        self.deck: List[Dict] = []
+        
+        # Turn Management
+        self.current_turn_holder: Optional[str] = None
+        self.turn_start_time: Optional[float] = None
 
-        HAND_SIZE = 5
-        self.hand: List[Dict] = [full_deck.pop() for _ in range(HAND_SIZE)]
-        self.deck: List[Dict] = full_deck  # Face-down private draw pile
-
-        # Winner state — set to winning node_id when someone empties their hand
+        # Winner state
         self.winner: Optional[str] = None
 
         # Algorithm States
         self.has_token = False
         self.token_sequence = 0
         
-        # Mutex (Ricart-Agrawala)
+        # Mutex (Ricart-Agrawala) - Used for "Grabbing" the Turn
         self.mutex_state = "RELEASED"
         self.mutex_request_ts = 0
         self.mutex_replies_received = set()
@@ -74,12 +73,20 @@ class StateManager:
             self.logs.pop(0)
 
     def to_ui_dict(self):
+        import time
+        time_left = 0
+        if self.turn_start_time and self.has_token:
+            elapsed = time.time() - self.turn_start_time
+            time_left = max(0, 10 - elapsed)
+
         return {
             "node_id": self.node_id,
             "game": {
                 "center_piles": self.center_piles,
                 "hand": self.hand,
-                "deck_size": len(self.deck)
+                "deck_size": len(self.deck),
+                "current_turn": self.current_turn_holder,
+                "turn_time_left": round(time_left, 1)
             },
             "winner": self.winner,
             "token": {

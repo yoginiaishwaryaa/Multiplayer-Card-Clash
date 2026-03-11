@@ -324,6 +324,69 @@ body {
   filter: grayscale(1);
 }
 
+.badge-turn {
+  background: #475569;
+}
+
+.badge-turn.active.pulse {
+  background: #facc15;
+  color: #000;
+  box-shadow: 0 0 15px rgba(250, 204, 21, 0.6);
+  animation: pulse-active 2s infinite;
+}
+
+@keyframes pulse-active {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.4);
+  }
+
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(250, 204, 21, 0.8);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.4);
+  }
+}
+
+.badge-snapshot {
+  background: #6366f1;
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+}
+
+.spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-turn {
+  background: #facc15;
+  color: #000;
+}
+
+.btn-turn:hover {
+  background: #eab308;
+}
+
+.btn-turn:disabled {
+  background: #475569;
+  color: #94a3b8;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, #38bdf8, #0ea5e9);
 }
