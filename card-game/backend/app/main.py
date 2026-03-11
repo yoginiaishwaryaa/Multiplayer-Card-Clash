@@ -109,6 +109,7 @@ async def websocket_node(websocket: WebSocket):
         pass
 
 def main():
+    parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, help="Path to node config JSON")
     parser.add_argument("--peer", action="append", help="Override peer address (e.g., node2=ws://192.168.1.11:7002/ws/node)")
     args = parser.parse_args()
