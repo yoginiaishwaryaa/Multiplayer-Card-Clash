@@ -4,7 +4,7 @@
     "listen_port": 7001,
     "ui_port": 3001,
     "peers": {
-        "node2": "ws://localhost:7002/ws/node",
+        "node2": "ws://10.12.252.84:7002/ws/node",
         "node3": "ws://localhost:7003/ws/node"
     },
     "ring_order": [
