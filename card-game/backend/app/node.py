@@ -90,9 +90,12 @@ class Node:
 
     async def _initialize_game(self):
         """Distributed game start (Node 1 only)."""
-        if len(self.network.peers) < 2:
-            logger.warning("Not enough peers to start game (need 3 total)")
+        peer_count = len(self.network.peers)
+        if peer_count < 1:
+            logger.warning("Not enough peers to start game (need at least 2 total players)")
             return
+
+        logger.info(f"Starting distributed game with {peer_count + 1} players")
 
         import random
         from .state import build_deck
