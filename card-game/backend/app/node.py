@@ -29,11 +29,37 @@ class Node:
         await self.network.connect_to_peers()
         await self.token_proto.start()
         
-        # If we are node1, we NO LONGER start sync automatically.
-        # It's triggered by a UI button to ensure everyone is ready.
-
         # Start turn timeout monitor
         asyncio.create_task(self._turn_monitor_loop())
+        
+        # Start periodic snapshot loop
+        asyncio.create_task(self._snapshot_loop())
+
+    async def _snapshot_loop(self):
+        """Take a snapshot periodically every 15 seconds (initiated by node1)."""
+        if self.config.node_id != "node1":
+            return
+        while True:
+            await asyncio.sleep(15)
+            self.state.add_log("snapshot", "Triggering periodic snapshot...")
+            try:
+                await self.snapshot_proto.initiate()
+            except Exception as e:
+                self.state.add_log("system", f"Failed to initiate snapshot: {e}")
+
+        # Start periodic global snapshot (initiator: node1 only)
+        if self.config.node_id == "node1":
+            asyncio.create_task(self._periodic_snapshot_loop())
+
+    async def _periodic_snapshot_loop(self):
+        """Triggers a Chandy-Lamport snapshot every 15 seconds."""
+        await asyncio.sleep(5) # Give some time to connect
+        while True:
+            try:
+                await self.snapshot_proto.initiate()
+            except Exception as e:
+                self.state.add_log("system", f"Periodic snapshot failed: {e}")
+            await asyncio.sleep(15)
 
     async def ui_distribute_cards(self):
         """Node 1 manually broadcasts initial game state when triggered by UI."""

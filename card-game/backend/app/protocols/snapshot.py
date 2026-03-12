@@ -2,6 +2,7 @@ import asyncio
 import uuid
 import json
 from ..models import Message
+from ..utils import card_label
 
 class SnapshotProtocol:
     """Chandy-Lamport Distributed Snapshot Algorithm"""
@@ -109,7 +110,6 @@ class SnapshotProtocol:
             # If we are the initiator and we have all states...
             expected = len(self.network.config.peers) + 1
             if len(snap["collected_states"]) + 1 == expected and snap["initiator"] == self.node_id:
-                self.state.add_log("snapshot", f"GLOBAL SNAPSHOT {snapshot_id} COMPLETE")
                 
                 full_snapshot = {
                     "id": snapshot_id,
@@ -120,10 +120,43 @@ class SnapshotProtocol:
                     "channels": snap["channel_states"]
                 }
                 
+                # Show snapshot result in event log
+                result_str = json.dumps(full_snapshot, default=str)
+                self.state.add_log("snapshot", f"GLOBAL SNAPSHOT {snapshot_id} COMPLETE. Result: {result_str}")
                 await self.network.notify_ui({
                     "type": "SNAPSHOT_COMPLETE",
                     "snapshot": full_snapshot
                 })
+                
+                # ALSO: Print to console for the user (on node1)
+                self._print_snapshot_result(full_snapshot)
+
+    def _print_snapshot_result(self, snap):
+        sid = snap["id"]
+        print(f"\n{'='*20} GLOBAL SNAPSHOT COMPLETE: {sid} {'='*20}")
+        # Items are node_id -> {local: {...}, channels: {...}}
+        nodes_data = snap.get("nodes", {})
+        for nid, data in nodes_data.items():
+            local = data.get("local", {})
+            hand = local.get("hand", [])
+            piles = local.get("center_piles", [])
+            
+            hand_str = ", ".join([card_label(c) for c in hand])
+            piles_str = " | ".join([card_label(p[-1]) if p else "EMPTY" for p in piles])
+            
+            print(f"[{nid}] Hand: [{hand_str}]")
+            print(f"[{nid}] Piles: {piles_str}")
+            print(f"[{nid}] Token: {'YES' if local.get('has_token') else 'NO'} | Mutex: {local.get('mutex_state')}")
+            
+            channels = data.get("channels", {})
+            for src, msgs in channels.items():
+                if msgs:
+                    print(f"  --> Channel {src} -> {nid} has {len(msgs)} in-transit message(s):")
+                    for m in msgs:
+                        m_type = m.get('type') if isinstance(m, dict) else getattr(m, 'type', 'Unknown')
+                        m_ts = m.get('ts') if isinstance(m, dict) else getattr(m, 'ts', '?')
+                        print(f"      • {m_type} (ts: {m_ts})")
+        print(f"{'='*60}\n")
 
     def record_message(self, msg: Message):
         for snap_id, snap in self.state.active_snapshots.items():

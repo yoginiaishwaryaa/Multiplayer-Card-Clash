@@ -83,9 +83,8 @@ const DrawDeck: React.FC<{ deckSize: number; onDraw: () => void }> = ({ deckSize
             Draw Pile
         </div>
         {/* Stacked card illusion */}
-        <div style={{ position: 'relative', width: 64, height: 90 }} onClick={deckSize > 0 ? onDraw : undefined}
-            title={deckSize > 0 ? `Draw a card (${deckSize} left)` : 'Deck empty'}
-            style2={{ cursor: deckSize > 0 ? 'pointer' : 'not-allowed' }}>
+        <div style={{ position: 'relative', width: 64, height: 90, cursor: deckSize > 0 ? 'pointer' : 'not-allowed' }} onClick={deckSize > 0 ? onDraw : undefined}
+            title={deckSize > 0 ? `Draw a card (${deckSize} left)` : 'Deck empty'}>
             {deckSize > 2 && <div className="deck-shadow deck-shadow-3" />}
             {deckSize > 1 && <div className="deck-shadow deck-shadow-2" />}
             <div className={`deck-card-facedown${deckSize === 0 ? ' empty' : ''}`}
@@ -129,7 +128,6 @@ const WinnerBanner: React.FC<{ winner: string; myNodeId: string; onReset: () => 
 const App: React.FC = () => {
     const [state, setState] = useState<StateUpdate | null>(null);
     const [selectedCard, setSelectedCard] = useState<Card | null>(null);
-    const [snapshot, setSnapshot] = useState<SnapshotComplete['snapshot'] | null>(null);
     const [hint, setHint] = useState('');
     const ws = useRef<WebSocket | null>(null);
 
@@ -142,7 +140,6 @@ const App: React.FC = () => {
             socket.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'STATE_UPDATE') setState(msg.data);
-                else if (msg.type === 'SNAPSHOT_COMPLETE') setSnapshot(msg.snapshot);
             };
             socket.onclose = () => setTimeout(connect, 2000);
             ws.current = socket;
@@ -255,7 +252,7 @@ const App: React.FC = () => {
                             <div className="hand-container">
                                 {state.game.hand.length === 0 ? (
                                     <span style={{ color: 'var(--success)', fontWeight: 600, fontSize: '0.9rem' }}>
-                                        🎉 No cards left!
+                                        No cards left!
                                     </span>
                                 ) : (
                                     state.game.hand.map((card, idx) => (
@@ -289,17 +286,6 @@ const App: React.FC = () => {
                                 <Play size={16} style={{ marginRight: 8 }} /> Start Game
                             </button>
                         )}
-                        {state.game.current_turn === state.node_id && (
-                            <button className="btn btn-warning" onClick={() => sendAction('release_turn')}>
-                                <ArrowRight size={16} style={{ marginRight: 8 }} /> Release Turn
-                            </button>
-                        )}
-                        <button className="btn btn-secondary" onClick={() => sendAction('shuffle')} disabled={state.game.current_turn !== state.node_id}>
-                            <RotateCcw size={16} style={{ marginRight: 8 }} /> Reset Piles
-                        </button>
-                        <button className="btn btn-primary" onClick={() => sendAction('snapshot')}>
-                            <Camera size={16} style={{ marginRight: 8 }} /> Snapshot
-                        </button>
                     </div>
                 </section>
 
@@ -320,44 +306,6 @@ const App: React.FC = () => {
                 </aside>
             </main>
 
-            {/* Snapshot Modal */}
-            {snapshot && (
-                <div className="modal-overlay" onClick={() => setSnapshot(null)}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                            <h2>Chandy-Lamport Global Snapshot: {snapshot.id}</h2>
-                            <button className="btn btn-accent" onClick={() => setSnapshot(null)}>Close</button>
-                        </div>
-                        <div className="snapshot-grid">
-                            {Object.entries(snapshot.nodes).map(([nodeId, data]) => (
-                                <div key={nodeId} className="snapshot-card">
-                                    <h4 style={{ color: 'var(--primary)', marginTop: 0 }}>Node: {nodeId}</h4>
-                                    <div style={{ fontSize: '0.85rem' }}>
-                                        <p>Hand ({(data.local.hand as Card[]).length}): {(data.local.hand as Card[]).map(c => `${rankLabel(c.rank)}${c.suit}`).join(', ') || '—'}</p>
-                                        <p>Token: {data.local.has_token ? 'YES' : 'NO'}</p>
-                                        <p>Mutex: {data.local.mutex_state}</p>
-                                        <p>Center Tops: {(data.local.center_piles as Card[][]).map(pile => {
-                                            const top = pile[pile.length - 1] as Card;
-                                            return `${rankLabel(top.rank)}${top.suit}`;
-                                        }).join(' | ')}</p>
-                                        <div style={{ marginTop: '0.5rem', borderTop: '1px solid #475569', paddingTop: '0.5rem' }}>
-                                            <strong>In-Transit:</strong>
-                                            {Object.entries(data.channels).map(([src, msgs]) => (
-                                                <div key={src} style={{ paddingLeft: '0.5rem', marginTop: '0.2rem' }}>
-                                                    {src} → {nodeId}: {msgs.length} msg{msgs.length !== 1 ? 's' : ''}
-                                                    {msgs.map((m, mi) => (
-                                                        <div key={mi} style={{ fontSize: '0.7rem', opacity: 0.7 }}>• {m.type} (ts:{m.ts})</div>
-                                                    ))}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

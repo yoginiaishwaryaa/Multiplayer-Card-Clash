@@ -49,20 +49,28 @@ async def websocket_ui(websocket: WebSocket):
     if not node:
         await websocket.close()
         return
-    node.network.ui_websockets.add(websocket)
-    # Send initial state
-    await websocket.send_text(json.dumps({
-        "type": "STATE_UPDATE", 
-        "data": node.state.to_ui_dict()
-    }))
     
+    node.network.ui_websockets.add(websocket)
     try:
+        # Send initial state
+        await websocket.send_text(json.dumps({
+            "type": "STATE_UPDATE", 
+            "data": node.state.to_ui_dict()
+        }))
+        
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
             await handle_ui_command(message)
     except WebSocketDisconnect:
-        node.network.ui_websockets.remove(websocket)
+        pass # Normal disconnection
+    except Exception as e:
+        # Avoid crashing on unexpected socket errors
+        print(f"UI WebSocket error on node {node.config.node_id if node else '?'}: {e}")
+    finally:
+        # Ensure cleanup even if communication fails
+        if node and websocket in node.network.ui_websockets:
+            node.network.ui_websockets.remove(websocket)
 
 async def handle_ui_command(cmd: dict):
     if not node:

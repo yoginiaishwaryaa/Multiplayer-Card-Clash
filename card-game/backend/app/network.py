@@ -63,11 +63,17 @@ class NetworkManager:
         if tasks:
             await asyncio.gather(*tasks)
 
-    async def notify_ui(self, state_dict: Dict[str, Any]):
+    async def notify_ui(self, data: Dict[str, Any]):
         if not self.ui_websockets:
             return
         
-        payload = json.dumps({"type": "STATE_UPDATE", "data": state_dict})
+        if "type" in data:
+            # Message is already formatted correctly (e.g. SNAPSHOT_COMPLETE)
+            payload = json.dumps(data)
+        else:
+            # Default to STATE_UPDATE for raw state dicts
+            payload = json.dumps({"type": "STATE_UPDATE", "data": data})
+
         disconnected = set()
         for ws in self.ui_websockets:
             try:
