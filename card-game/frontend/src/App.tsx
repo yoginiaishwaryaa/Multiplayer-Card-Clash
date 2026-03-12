@@ -131,7 +131,6 @@ const WinnerBanner: React.FC<{ winner: string; myNodeId: string; onReset: () => 
 const App: React.FC = () => {
     const [state, setState] = useState<StateUpdate | null>(null);
     const [selectedCard, setSelectedCard] = useState<Card | null>(null);
-    const [snapshot, setSnapshot] = useState<SnapshotComplete['snapshot'] | null>(null);
     const [hint, setHint] = useState('');
     const ws = useRef<WebSocket | null>(null);
 
@@ -144,7 +143,6 @@ const App: React.FC = () => {
             socket.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'STATE_UPDATE') setState(msg.data);
-                else if (msg.type === 'SNAPSHOT_COMPLETE') setSnapshot(msg.snapshot);
             };
             socket.onclose = () => setTimeout(connect, 2000);
             ws.current = socket;
@@ -319,44 +317,6 @@ const App: React.FC = () => {
                 </aside>
             </main>
 
-            {/* Snapshot Modal */}
-            {snapshot && (
-                <div className="modal-overlay" onClick={() => setSnapshot(null)}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                            <h2>Chandy-Lamport Global Snapshot: {snapshot.id}</h2>
-                            <button className="btn btn-accent" onClick={() => setSnapshot(null)}>Close</button>
-                        </div>
-                        <div className="snapshot-grid">
-                            {Object.entries(snapshot.nodes).map(([nodeId, data]) => (
-                                <div key={nodeId} className="snapshot-card">
-                                    <h4 style={{ color: 'var(--primary)', marginTop: 0 }}>Node: {nodeId}</h4>
-                                    <div style={{ fontSize: '0.85rem' }}>
-                                        <p>Hand ({(data.local.hand as Card[]).length}): {(data.local.hand as Card[]).map(c => `${rankLabel(c.rank)}${c.suit}`).join(', ') || '—'}</p>
-                                        <p>Token: {data.local.has_token ? 'YES' : 'NO'}</p>
-                                        <p>Mutex: {data.local.mutex_state}</p>
-                                        <p>Center Tops: {(data.local.center_piles as Card[][]).map(pile => {
-                                            const top = pile[pile.length - 1] as Card;
-                                            return `${rankLabel(top.rank)}${top.suit}`;
-                                        }).join(' | ')}</p>
-                                        <div style={{ marginTop: '0.5rem', borderTop: '1px solid #475569', paddingTop: '0.5rem' }}>
-                                            <strong>In-Transit:</strong>
-                                            {Object.entries(data.channels).map(([src, msgs]) => (
-                                                <div key={src} style={{ paddingLeft: '0.5rem', marginTop: '0.2rem' }}>
-                                                    {src} → {nodeId}: {msgs.length} msg{msgs.length !== 1 ? 's' : ''}
-                                                    {msgs.map((m, mi) => (
-                                                        <div key={mi} style={{ fontSize: '0.7rem', opacity: 0.7 }}>• {m.type} (ts:{m.ts})</div>
-                                                    ))}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
