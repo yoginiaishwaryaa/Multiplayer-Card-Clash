@@ -31,6 +31,21 @@ class Node:
         
         # Start turn timeout monitor
         asyncio.create_task(self._turn_monitor_loop())
+        
+        # Start periodic snapshot loop
+        asyncio.create_task(self._snapshot_loop())
+
+    async def _snapshot_loop(self):
+        """Take a snapshot periodically every 15 seconds (initiated by node1)."""
+        if self.config.node_id != "node1":
+            return
+        while True:
+            await asyncio.sleep(15)
+            self.state.add_log("snapshot", "Triggering periodic snapshot...")
+            try:
+                await self.snapshot_proto.initiate()
+            except Exception as e:
+                self.state.add_log("system", f"Failed to initiate snapshot: {e}")
 
         # Start periodic global snapshot (initiator: node1 only)
         if self.config.node_id == "node1":

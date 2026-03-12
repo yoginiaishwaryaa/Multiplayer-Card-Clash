@@ -110,7 +110,6 @@ class SnapshotProtocol:
             # If we are the initiator and we have all states...
             expected = len(self.network.config.peers) + 1
             if len(snap["collected_states"]) + 1 == expected and snap["initiator"] == self.node_id:
-                self.state.add_log("snapshot", f"GLOBAL SNAPSHOT {snapshot_id} COMPLETE")
                 
                 full_snapshot = {
                     "id": snapshot_id,
@@ -121,6 +120,9 @@ class SnapshotProtocol:
                     "channels": snap["channel_states"]
                 }
                 
+                # Show snapshot result in event log
+                result_str = json.dumps(full_snapshot, default=str)
+                self.state.add_log("snapshot", f"GLOBAL SNAPSHOT {snapshot_id} COMPLETE. Result: {result_str}")
                 await self.network.notify_ui({
                     "type": "SNAPSHOT_COMPLETE",
                     "snapshot": full_snapshot
