@@ -83,9 +83,8 @@ const DrawDeck: React.FC<{ deckSize: number; onDraw: () => void }> = ({ deckSize
             Draw Pile
         </div>
         {/* Stacked card illusion */}
-        <div style={{ position: 'relative', width: 64, height: 90 }} onClick={deckSize > 0 ? onDraw : undefined}
-            title={deckSize > 0 ? `Draw a card (${deckSize} left)` : 'Deck empty'}
-            style2={{ cursor: deckSize > 0 ? 'pointer' : 'not-allowed' }}>
+        <div style={{ position: 'relative', width: 64, height: 90, cursor: deckSize > 0 ? 'pointer' : 'not-allowed' }} onClick={deckSize > 0 ? onDraw : undefined}
+            title={deckSize > 0 ? `Draw a card (${deckSize} left)` : 'Deck empty'}>
             {deckSize > 2 && <div className="deck-shadow deck-shadow-3" />}
             {deckSize > 1 && <div className="deck-shadow deck-shadow-2" />}
             <div className={`deck-card-facedown${deckSize === 0 ? ' empty' : ''}`}
@@ -299,9 +298,6 @@ const App: React.FC = () => {
                         )}
                         <button className="btn btn-secondary" onClick={() => sendAction('shuffle')} disabled={state.game.current_turn !== state.node_id}>
                             <RotateCcw size={16} style={{ marginRight: 8 }} /> Reset Piles
-                        </button>
-                        <button className="btn btn-primary" onClick={() => sendAction('snapshot')}>
-                            <Camera size={16} style={{ marginRight: 8 }} /> Snapshot
                         </button>
                     </div>
                 </section>
