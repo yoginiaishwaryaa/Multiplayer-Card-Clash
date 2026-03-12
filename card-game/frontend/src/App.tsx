@@ -119,9 +119,6 @@ const WinnerBanner: React.FC<{ winner: string; myNodeId: string; onReset: () => 
                         ? 'You emptied your hand first — congratulations!'
                         : `${winner} emptied their hand first.`}
                 </p>
-                <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={onReset}>
-                    <RotateCcw size={16} style={{ marginRight: 8 }} /> Reset Piles (need Token)
-                </button>
             </div>
         </div>
     );
