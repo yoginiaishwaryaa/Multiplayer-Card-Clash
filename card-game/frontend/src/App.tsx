@@ -252,7 +252,7 @@ const App: React.FC = () => {
                             <div className="hand-container">
                                 {state.game.hand.length === 0 ? (
                                     <span style={{ color: 'var(--success)', fontWeight: 600, fontSize: '0.9rem' }}>
-                                        🎉 No cards left!
+                                        No cards left!
                                     </span>
                                 ) : (
                                     state.game.hand.map((card, idx) => (
@@ -286,14 +286,6 @@ const App: React.FC = () => {
                                 <Play size={16} style={{ marginRight: 8 }} /> Start Game
                             </button>
                         )}
-                        {state.game.current_turn === state.node_id && (
-                            <button className="btn btn-warning" onClick={() => sendAction('release_turn')}>
-                                <ArrowRight size={16} style={{ marginRight: 8 }} /> Release Turn
-                            </button>
-                        )}
-                        <button className="btn btn-secondary" onClick={() => sendAction('shuffle')} disabled={state.game.current_turn !== state.node_id}>
-                            <RotateCcw size={16} style={{ marginRight: 8 }} /> Reset Piles
-                        </button>
                     </div>
                 </section>
 
